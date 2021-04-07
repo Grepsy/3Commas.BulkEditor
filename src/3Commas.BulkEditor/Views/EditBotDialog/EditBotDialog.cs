@@ -6,21 +6,27 @@ using _3Commas.BulkEditor.Infrastructure;
 using _3Commas.BulkEditor.Misc;
 using XCommas.Net.Objects;
 
-namespace _3Commas.BulkEditor.Views.EditDialog
+namespace _3Commas.BulkEditor.Views.EditBotDialog
 {
-    public partial class EditDialog : Form
+    public partial class EditBotDialog : Form
     {
         private readonly int _botCount;
+        private readonly XCommasLayer _manager;
         private readonly IMessageBoxService _mbs = new MessageBoxService();
         private readonly List<BotStrategy> _startConditions = new List<BotStrategy>();
 
-        public EditDialog(int botCount)
+        public EditBotDialog(int botCount, XCommasLayer manager)
         {
             _botCount = botCount;
+            _manager = manager;
             InitializeComponent();
 
             cmbIsEnabled.DataBindings.Add(nameof(ComboBox.Visible), chkChangeIsEnabled, nameof(CheckBox.Checked));
+            cmbPair.DataBindings.Add(nameof(ComboBox.Visible), chkChangePair, nameof(CheckBox.Checked));
+            cmbProfitCurrency.DataBindings.Add(nameof(ComboBox.Visible), chkChangeProfitCurrency, nameof(CheckBox.Checked));
+            lblPairWarning.DataBindings.Add(nameof(Label.Visible), chkChangePair, nameof(CheckBox.Checked));
             txtName.DataBindings.Add(nameof(TextBox.Visible), chkChangeName, nameof(CheckBox.Checked));
+            numMaxActiveDeals.DataBindings.Add(nameof(NumericUpDown.Visible), chkChangeMaxActiveDeals, nameof(CheckBox.Checked));
             lblPreviewTitle.DataBindings.Add(nameof(Label.Visible), chkChangeName, nameof(CheckBox.Checked));
             lblNamePreview.DataBindings.Add(nameof(Label.Visible), chkChangeName, nameof(CheckBox.Checked));
             cmbStartOrderType.DataBindings.Add(nameof(ComboBox.Visible), chkChangeStartOrderType, nameof(CheckBox.Checked));
@@ -29,6 +35,7 @@ namespace _3Commas.BulkEditor.Views.EditDialog
             numSafetyOrderVolume.DataBindings.Add(nameof(NumericUpDown.Visible), chkChangeSafetyOrderSize, nameof(CheckBox.Checked));
             cmbSafetyOrderVolumeType.DataBindings.Add(nameof(ComboBox.Visible), chkChangeSafetyOrderSizeType, nameof(CheckBox.Checked));
             numTargetProfit.DataBindings.Add(nameof(NumericUpDown.Visible), chkChangeTargetProfit, nameof(CheckBox.Checked));
+            cmbTakeProfitType.DataBindings.Add(nameof(ComboBox.Visible), chkChangeTakeProfitType, nameof(CheckBox.Checked));
             cmbTtpEnabled.DataBindings.Add(nameof(ComboBox.Visible), chkChangeTrailingEnabled, nameof(CheckBox.Checked));
             numTrailingDeviation.DataBindings.Add(nameof(NumericUpDown.Visible), chkChangeTrailingDeviation, nameof(CheckBox.Checked));
             numMaxSafetyTradesCount.DataBindings.Add(nameof(NumericUpDown.Visible), chkChangeMaxSafetyTradesCount, nameof(CheckBox.Checked));
@@ -43,8 +50,18 @@ namespace _3Commas.BulkEditor.Views.EditDialog
             btnAddStartCondition.DataBindings.Add(nameof(Button.Visible), chkChangeDealStartCondition, nameof(CheckBox.Checked));
             btnRemoveStartCondition.DataBindings.Add(nameof(Button.Visible), chkChangeDealStartCondition, nameof(CheckBox.Checked));
             lblStartConditionWarning.DataBindings.Add(nameof(Label.Visible), chkChangeDealStartCondition, nameof(CheckBox.Checked));
+            numStopLossPercentage.DataBindings.Add(nameof(NumericUpDown.Visible), chkStopLossPercentage, nameof(CheckBox.Checked));
+            cmbStopLossType.DataBindings.Add(nameof(ComboBox.Visible), chkStopLossType, nameof(CheckBox.Checked));
+            cmbStopLossTimeoutEnabled.DataBindings.Add(nameof(ComboBox.Visible), chkStopLossTimeoutEnabled, nameof(CheckBox.Checked));
+            numStopLossTimeout.DataBindings.Add(nameof(NumericUpDown.Visible), chkStopLossTimeout, nameof(CheckBox.Checked));
+            cmbLeverageType.DataBindings.Add(nameof(ComboBox.Visible), chkChangeLeverageType, nameof(CheckBox.Checked));
+            numLeverageCustomValue.DataBindings.Add(nameof(NumericUpDown.Visible), chkChangeCustomLeverageValue, nameof(CheckBox.Checked));
 
             ControlHelper.AddValuesToCombobox<StartOrderType>(cmbStartOrderType);
+            ControlHelper.AddValuesToCombobox<TakeProfitType>(cmbTakeProfitType);
+            ControlHelper.AddValuesToCombobox<StopLossType>(cmbStopLossType);
+            ControlHelper.AddValuesToCombobox<LeverageType>(cmbLeverageType);
+            ControlHelper.AddValuesToCombobox<ProfitCurrency>(cmbProfitCurrency);
             cmbBaseOrderVolumeType.Items.Add(new ComboBoxItem(VolumeType.QuoteCurrency, "Quote"));
             cmbBaseOrderVolumeType.Items.Add(new ComboBoxItem(VolumeType.BaseCurrency, "Base"));
             cmbBaseOrderVolumeType.Items.Add(new ComboBoxItem(VolumeType.Percent, "% (Base)"));
@@ -52,17 +69,20 @@ namespace _3Commas.BulkEditor.Views.EditDialog
             cmbSafetyOrderVolumeType.Items.Add(new ComboBoxItem(VolumeType.BaseCurrency, "Base"));
             cmbSafetyOrderVolumeType.Items.Add(new ComboBoxItem(VolumeType.Percent, "% (Base)"));
 
+            cmbPair.Items.AddRange(ObjectContainer.Cache.Pairs.ToArray());
             cmbIsEnabled.Items.Add("Enable");
             cmbIsEnabled.Items.Add("Disable");
             cmbTtpEnabled.Items.Add("Enable");
             cmbTtpEnabled.Items.Add("Disable");
             cmbDisableAfterDealsCount.Items.Add("Enable");
             cmbDisableAfterDealsCount.Items.Add("Disable");
+            cmbStopLossTimeoutEnabled.Items.Add("Enable");
+            cmbStopLossTimeoutEnabled.Items.Add("Disable");
         }
 
-        public EditDto EditDto { get; set; } = new EditDto();
+        public EditBotDto EditDto { get; set; } = new EditBotDto();
 
-        public bool HasChanges => Controls.OfType<CheckBox>().Any(x => x.Checked);
+        public bool HasChanges => panel1.Controls.OfType<CheckBox>().Any(x => x.Checked);
 
         private void btnCreate_Click(object sender, EventArgs e)
         {
@@ -82,6 +102,15 @@ namespace _3Commas.BulkEditor.Views.EditDialog
                         if (cmbIsEnabled.SelectedItem.ToString() == "Enable") EditDto.IsEnabled = true;
                         else if (cmbIsEnabled.SelectedItem.ToString() == "Disable") EditDto.IsEnabled = false;
                     }
+                    
+                    if (chkChangePair.Checked) EditDto.Pair = cmbPair.SelectedItem.ToString();
+                    if (chkChangeMaxActiveDeals.Checked) EditDto.MaxActiveDeals = (int)numMaxActiveDeals.Value;
+
+                    if (chkChangeProfitCurrency.Checked)
+                    {
+                        Enum.TryParse(cmbProfitCurrency.SelectedItem.ToString(), out ProfitCurrency profitCurrency);
+                        EditDto.ProfitCurrency = profitCurrency;
+                    }
 
                     if (chkChangeStartOrderType.Checked)
                     {
@@ -100,6 +129,11 @@ namespace _3Commas.BulkEditor.Views.EditDialog
                         EditDto.SafetyOrderVolumeType = (VolumeType?)((ComboBoxItem)cmbSafetyOrderVolumeType.SelectedItem).EnumValue;
                     }
                     if (chkChangeTargetProfit.Checked) EditDto.TakeProfit = numTargetProfit.Value;
+                    if (chkChangeTakeProfitType.Checked)
+                    {
+                        Enum.TryParse(cmbTakeProfitType.SelectedItem.ToString(), out TakeProfitType takeProfitType);
+                        EditDto.TakeProfitType = takeProfitType;
+                    }
                     if (chkChangeTrailingEnabled.Checked) EditDto.TrailingEnabled = cmbTtpEnabled.SelectedItem.ToString() == "Enable" ? true : false;
                     if (chkChangeTrailingDeviation.Checked) EditDto.TrailingDeviation = numTrailingDeviation.Value;
                     if (chkChangeMaxSafetyTradesCount.Checked) EditDto.MaxSafetyOrders = (int)numMaxSafetyTradesCount.Value;
@@ -109,6 +143,20 @@ namespace _3Commas.BulkEditor.Views.EditDialog
                     if (chkChangeSafetyOrderStepScale.Checked) EditDto.MartingaleStepCoefficient = numSafetyOrderStepScale.Value;
                     if (chkChangeCooldownBetweenDeals.Checked) EditDto.Cooldown = (int)numCooldownBetweenDeals.Value;
                     if (chkChangeDealStartCondition.Checked) EditDto.DealStartConditions = _startConditions;
+                    if (chkStopLossPercentage.Checked) EditDto.StopLossPercentage = numStopLossPercentage.Value;
+                    if (chkChangeLeverageType.Checked)
+                    {
+                        Enum.TryParse(cmbLeverageType.SelectedItem.ToString(), out LeverageType leverageType);
+                        EditDto.LeverageType = leverageType;
+                    }
+                    if (chkChangeCustomLeverageValue.Checked) EditDto.LeverageCustomValue = numLeverageCustomValue.Value;
+                    if (chkStopLossType.Checked)
+                    {
+                        Enum.TryParse(cmbStopLossType.SelectedItem.ToString(), out StopLossType stopLossType);
+                        EditDto.StopLossType = stopLossType;
+                    }
+                    if (chkStopLossTimeoutEnabled.Checked) EditDto.StopLossTimeoutEnabled = cmbStopLossTimeoutEnabled.SelectedItem.ToString() == "Enable" ? true : false;
+                    if (chkStopLossTimeout.Checked) EditDto.StopLossTimeout = (int)numStopLossTimeout.Value;
 
                     if (chkDisableAfterDealsCount.Checked)
                     {
@@ -129,8 +177,11 @@ namespace _3Commas.BulkEditor.Views.EditDialog
         {
             var errors = new List<string>();
 
+            if (chkChangePair.Checked && cmbPair.SelectedItem == null) errors.Add("New value for \"Pair\" missing.");
             if (chkChangeIsEnabled.Checked && cmbIsEnabled.SelectedItem == null) errors.Add("New value for \"Enabled\" missing.");
             if (chkChangeName.Checked && string.IsNullOrWhiteSpace(txtName.Text)) errors.Add("New value for \"Name\" missing.");
+            if (chkChangeProfitCurrency.Checked && cmbProfitCurrency.SelectedItem == null) errors.Add("New value for \"Profit Currency\" missing.");
+            if (chkChangeTakeProfitType.Checked && cmbTakeProfitType.SelectedItem == null) errors.Add("New value for \"Take Profit Type\" missing.");
             if (chkChangeStartOrderType.Checked && cmbStartOrderType.SelectedItem == null) errors.Add("New value for \"Start Order Type\" missing.");
             if (chkChangeBaseOrderSizeType.Checked && cmbBaseOrderVolumeType.SelectedItem == null) errors.Add("New value for \"Base Order Type\" missing.");
             if (chkChangeSafetyOrderSizeType.Checked && cmbSafetyOrderVolumeType.SelectedItem == null) errors.Add("New value for \"Safety Order Type\" missing.");
@@ -139,7 +190,8 @@ namespace _3Commas.BulkEditor.Views.EditDialog
             if (chkChangeTrailingEnabled.Checked && cmbTtpEnabled.SelectedItem == null) errors.Add("New value for \"TTP Enabled\" missing.");
             if (chkDisableAfterDealsCount.Checked && cmbDisableAfterDealsCount.SelectedItem == null) errors.Add("New value for \"Open deals & stop\" missing.");
             if (chkChangeDealStartCondition.Checked && !_startConditions.Any()) errors.Add("New value for \"Deal Start Condition\" missing.");
-            
+            if (chkChangeLeverageType.Checked && cmbLeverageType.SelectedItem == null) errors.Add("New value for \"Leverage Type\" missing.");
+
             if (errors.Any())
             {
                 _mbs.ShowError(String.Join(Environment.NewLine, errors), "Validation Error");
@@ -147,10 +199,10 @@ namespace _3Commas.BulkEditor.Views.EditDialog
 
             return !errors.Any();
         }
-
+         
         private void txtName_TextChanged(object sender, EventArgs e)
         {
-            lblNamePreview.Text = BotManager.GenerateNewName(txtName.Text, "Long", "USDT_BTC");
+            lblNamePreview.Text = XCommasLayer.GenerateNewName(txtName.Text, "Long", new[] {"USDT_BTC"}, "AccountName");
         }
 
         private void cmbDisableAfterDealsCount_SelectedValueChanged(object sender, EventArgs e)
@@ -160,7 +212,7 @@ namespace _3Commas.BulkEditor.Views.EditDialog
 
         private void btnAddStartCondition_Click(object sender, EventArgs e)
         {
-            ChooseSignal.ChooseSignal form = new ChooseSignal.ChooseSignal();
+            ChooseSignal.ChooseSignal form = new ChooseSignal.ChooseSignal(_manager);
             var dr = form.ShowDialog(this);
             if (dr == DialogResult.OK)
             {
@@ -184,7 +236,7 @@ namespace _3Commas.BulkEditor.Views.EditDialog
 
             foreach (var startCondition in startConditions)
             {
-                listViewStartConditions.Items.Add(new ListViewItem() { Tag = startCondition, Text = startCondition.Name, Name = startCondition.GetHashCode().ToString() });
+                listViewStartConditions.Items.Add(new ListViewItem() { Tag = startCondition, Text = startCondition.ToHumanReadableString(), Name = startCondition.GetHashCode().ToString() });
             }
         }
 

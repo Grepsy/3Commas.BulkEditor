@@ -1,13 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Collections.Generic;
 using XCommas.Net.Objects;
 
-namespace _3Commas.BulkEditor.Views.EditDialog
+namespace _3Commas.BulkEditor.Views.EditBotDialog
 {
-    public class EditDto
+    public class EditBotDto
     {
         public int? Cooldown { get; set; }
         public decimal? MartingaleStepCoefficient { get; set; }
@@ -27,6 +23,16 @@ namespace _3Commas.BulkEditor.Views.EditDialog
         public List<BotStrategy> DealStartConditions { get; set; } = new List<BotStrategy>();
         public VolumeType? BaseOrderVolumeType { get; set; }
         public VolumeType? SafetyOrderVolumeType { get; set; }
+        public decimal? StopLossPercentage { get; set; }
+        public StopLossType? StopLossType { get; set; }
+        public bool? StopLossTimeoutEnabled { get; set; }
+        public int? StopLossTimeout { get; set; }
+        public LeverageType? LeverageType { get; set; }
+        public decimal? LeverageCustomValue { get; set; }
+        public TakeProfitType? TakeProfitType { get; set; }
+        public int? MaxActiveDeals { get; internal set; }
+        public string Pair { get; set; }
+        public ProfitCurrency? ProfitCurrency { get; set; }
     }
 
     public class DisableAfterDealsCountDto

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Windows.Forms;
 using _3Commas.BulkEditor.Misc;
 using XCommas.Net.Objects;
@@ -7,10 +8,12 @@ namespace _3Commas.BulkEditor.Views.ChooseSignal
 {
     public partial class ChooseSignal : Form
     {
+        private readonly XCommasLayer _botManager;
         private BotStrategy _strategy;
-
-        public ChooseSignal()
+        
+        public ChooseSignal(XCommasLayer botManager)
         {
+            _botManager = botManager;
             InitializeComponent();
 
             ControlHelper.AddValuesToCombobox<TradingViewTime>(cmbTradingViewTime);
@@ -19,20 +22,42 @@ namespace _3Commas.BulkEditor.Views.ChooseSignal
             ControlHelper.AddValuesToCombobox<IndicatorTime>(cmbUltTime);
             ControlHelper.AddValuesToCombobox<IndicatorTime>(cmbTaPresetsTime);
             ControlHelper.AddValuesToCombobox<TaPresetsType>(cmbTaPresetsType);
+            ControlHelper.AddValuesToCombobox<QflType>(cmbQflType);
         }
 
         public BotStrategy Strategy => _strategy;
 
         private void radioButton_CheckedChanged(object sender, EventArgs e)
         {
+            panelQfl.Visible = (sender == radioButtonQfl);
             panelRsi.Visible = (sender == radioButtonRsi);
             panelUlt.Visible = (sender == radioButtonUlt);
             panelTaPresets.Visible = (sender == radioButtonTaPresets);
             panelTradingView.Visible = (sender == radioButtonTradingView);
+            txtCustom.Visible = (sender == radioButtonCustom);
+            panelMarketplaceItems.Visible = (sender == radioButtonMarketplaceItems);
         }
 
         private void okButton_Click(object sender, EventArgs e)
         {
+            if (radioButtonQfl.Checked)
+            {
+                if (cmbQflType.SelectedItem == null)
+                {
+                    MessageBox.Show("QFL Type is missing");
+                    return;
+                }
+
+                if (numQflPercent.Value == 0)
+                {
+                    MessageBox.Show("QFL Percentage is missing");
+                    return;
+                }
+
+                QflType.TryParse(cmbQflType.SelectedItem.ToString(), out QflType type);
+                _strategy = new QflBotStrategy() { Options = new QflOptions(type, numQflPercent.Value) };
+            }
+
             if (radioButtonRsi.Checked)
             {
                 if (cmbRsiTime.SelectedItem == null)
@@ -95,8 +120,37 @@ namespace _3Commas.BulkEditor.Views.ChooseSignal
 
             if (radioButtonManual.Checked) _strategy = new ManualStrategy();
             if (radioButtonNonstop.Checked) _strategy = new NonStopBotStrategy();
+            
+            if (radioButtonCustom.Checked)
+            {
+                if (string.IsNullOrWhiteSpace(txtCustom.Text))
+                {
+                    MessageBox.Show("Name is missing");
+                    return;
+                }
+                _strategy = new UnknownStrategy(txtCustom.Text);
+            }
+
+            if (radioButtonMarketplaceItems.Checked)
+            {
+                if (cmbMarketplaceSignals.SelectedItem == null)
+                {
+                    MessageBox.Show("No Item selected");
+                    return;
+                }
+                _strategy = new UnknownStrategy(((MarketplaceItem) cmbMarketplaceSignals.SelectedItem).StrategyKey);
+            }
 
             this.DialogResult = DialogResult.OK;
+        }
+
+        private async void ChooseSignal_Load(object sender, EventArgs e)
+        {
+            var signals = await _botManager.GetMarketplaceItems();
+            cmbMarketplaceSignals.DataSource = signals.Where(x => x.StrategyType == "signal").OrderBy(x => x.Name).ToList();
+            cmbMarketplaceSignals.DisplayMember = nameof(MarketplaceItem.Name);
+            cmbMarketplaceSignals.ValueMember = nameof(MarketplaceItem.StrategyKey);
+            pbLoading.Visible = false;
         }
     }
 }

@@ -1,136 +1,102 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Configuration;
-using System.Diagnostics;
 using System.Linq;
-using System.Runtime.InteropServices;
+using System.Net.Http;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using _3Commas.BulkEditor.Infrastructure;
 using _3Commas.BulkEditor.Misc;
-using _3Commas.BulkEditor.Views.EditDialog;
+using M.EventBroker;
 using Microsoft.Extensions.Logging;
-using XCommas.Net.Objects;
-using Keys = _3Commas.BulkEditor.Misc.Keys;
 
 namespace _3Commas.BulkEditor.Views.MainForm
 {
     public class MainFormPresenter : PresenterBase<IMainForm>
     {
-        private readonly Keys _keys = new Keys();
+        private XCommasAccounts _keys;
         private readonly ILogger _logger;
         private readonly IMessageBoxService _mbs;
-        private List<Bot> _bots = new List<Bot>();
+        private readonly IEventBroker _eventBroker;
 
-        public MainFormPresenter(IMainForm view, ILogger logger, IMessageBoxService mbs) : base(view)
+        public MainFormPresenter(IMainForm view, ILogger logger, IMessageBoxService mbs, IEventBroker eventBroker) : base(view)
         {
             _logger = logger;
             _mbs = mbs;
-            _keys.ApiKey3Commas = Properties.Settings.Default.ApiKey3Commas;
-            _keys.Secret3Commas = Properties.Settings.Default.Secret3Commas;
+            _eventBroker = eventBroker;
+
+            GetOrMigrateSettings();
+        }
+
+        private void GetOrMigrateSettings()
+        {
+            var apiKey = Properties.Settings.Default.ApiKey3Commas;
+            var secret = Properties.Settings.Default.Secret3Commas;
+            _keys = ObjectContainer.KeyManager.Read();
+            if (!string.IsNullOrWhiteSpace(apiKey) && !string.IsNullOrWhiteSpace(secret) && _keys.IsEmpty)
+            {
+                _keys = new XCommasAccounts { Accounts = new List<XCommasAccount> { new XCommasAccount { ApiKey = apiKey, Secret = secret, Name = "default" } } };
+                ObjectContainer.KeyManager.Save(_keys);
+            }
         }
 
         internal async Task OnViewReady()
         {
-            if (!string.IsNullOrWhiteSpace(_keys.ApiKey3Commas) && !string.IsNullOrWhiteSpace(_keys.Secret3Commas))
+            if (!_keys.IsEmpty) await LoadAccounts();
+            View.InitGrids(_keys, _logger, _mbs);
+            await ShowMessage();
+        }
+
+        private async Task LoadAccounts()
+        {
+            var xCommas = new XCommasLayer(_keys, _logger);
+            var exchanges = await xCommas.RetrieveAccounts();
+            ObjectContainer.Cache.SetAccounts(exchanges);
+            var pairs = await xCommas.GetMarketPairs();
+            ObjectContainer.Cache.SetPairs(pairs);
+            View.SetAccountCount(_keys.Accounts.Count);
+            View.SetExchangeCount(exchanges.Count);
+            View.EnablePanicButton();
+        }
+
+        private async Task ShowMessage()
+        {
+            try
             {
-                await RefreshBots();
+                HttpClient client = new HttpClient();
+                string result = await client.GetStringAsync("https://marcdrexler.blob.core.windows.net/bulkeditor/message.txt");
+                if (!String.IsNullOrWhiteSpace(result))
+                {
+                    _mbs.ShowInformation(result);
+                }
+            }
+            catch
+            {
+                // ignore
             }
         }
 
-        private static void EncryptConfigFile()
-        {
-        }
-
-        public async Task On3CommasLinkClicked()
+        public async void OnManageApiKeys()
         {
             var settingsPersisted = !string.IsNullOrWhiteSpace(Properties.Settings.Default.ApiKey3Commas);
-            var settings = new Settings.Settings(settingsPersisted, "3Commas API Credentials", "Permissions Needed: BotsRead, BotsWrite, AccountsRead", _keys.ApiKey3Commas, _keys.Secret3Commas);
+            var settings = new Settings.Settings(settingsPersisted, "3Commas Accounts", _keys);
             var dr = settings.ShowDialog();
             if (dr == DialogResult.OK)
             {
-                _keys.ApiKey3Commas = settings.ApiKey;
-                _keys.Secret3Commas = settings.Secret;
+                _keys = new XCommasAccounts {Accounts = settings.Accounts.ToList()};
 
-                Properties.Settings.Default.ApiKey3Commas = settings.PersistKeys ? settings.ApiKey : "";
-                Properties.Settings.Default.Secret3Commas = settings.PersistKeys ? settings.Secret : "";
-                Properties.Settings.Default.Save();
-
-                EncryptConfigFile();
-
-                await RefreshBots();
+                await LoadAccounts();
+                _eventBroker.Publish(new KeysChangedEventArgs() {Keys = _keys});
             }
         }
 
-        private async Task RefreshBots()
-        {
-            View.SetCreateInProgress(true);
-            _bots = new List<Bot>();
-            View.RefreshBotGrid(_bots);
-            if (!String.IsNullOrWhiteSpace(_keys.Secret3Commas) && !String.IsNullOrWhiteSpace(_keys.ApiKey3Commas))
-            {
-                var botMgr = new BotManager(_keys, _logger);
-                _bots = (await botMgr.GetAllBots()).OrderBy(x => x.Id).ToList();
-            }
-            View.RefreshBotGrid(_bots);
-            View.SetTotalBotCount(_bots.Count);
-            View.SetCreateInProgress(false);
-        }
-
-        public void OnClearClick()
+        public void OnClear()
         {
             View.ClearLog();
         }
 
-        public void OnListChanged(int count)
+        public void OnStopAllBots()
         {
-            View.SetVisibleCount(count);
-        }
-
-        public void OnGridFilterChanged(string filterString)
-        {
-            View.ShowFilterInformation(!string.IsNullOrWhiteSpace(filterString));
-        }
-
-        public void OnSelectionChanged(int count)
-        {
-            View.SetSelectedRowCount(count);
-        }
-
-        public async void OnEdit()
-        {
-            var ids = View.SelectedBotIds;
-
-            if (!ids.Any())
-            {
-                _mbs.ShowInformation("No Bots selected");
-                return;
-            }
-
-            var botsToEdit = _bots.Where(x => ids.Contains(x.Id)).ToList();
-            if (botsToEdit.Any(x => x.Type != "Bot::SingleBot"))
-            {
-                _mbs.ShowError("Sorry, Bulk Edit only works for Simple Bots, not advanced.");
-                return;
-            }
-
-            var dlg = new EditDialog.EditDialog(botsToEdit.Count);
-            EditDto editData = new EditDto();
-            dlg.EditDto = editData;
-            var dr = dlg.ShowDialog(View);
-            if (dr == DialogResult.OK)
-            {
-                var loadingView = new ProgressView(botsToEdit, editData, _keys, _logger);
-                loadingView.ShowDialog(View);
-
-                _logger.LogInformation("Refreshing Bots");
-                await RefreshBots();
-            }
-        }
-
-        public async Task OnRefresh()
-        {
-            await RefreshBots();
+            _eventBroker.Publish(new StopAllBotsEventArgs());
         }
     }
 }

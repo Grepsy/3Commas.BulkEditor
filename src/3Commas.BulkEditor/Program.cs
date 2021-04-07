@@ -15,16 +15,16 @@ namespace _3Commas.BulkEditor
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            EncryptConfigFile();
 
             try
             {
-                EncryptConfigFile();
                 Application.Run(new MainForm());
             }
             catch (Exception e)
             {
                 MessageBox.Show("Sorry, but something went wrong!" + Environment.NewLine + Environment.NewLine +
-                                "Please let me know that there was a problem and I will try to fit it for you. You can report this error here: " +
+                                "Please let me know that there was a problem and I will try to fix it for you. You can report this error here: " +
                                 "https://github.com/MarcDrexler/3Commas.BulkEditor/issues" + Environment.NewLine + Environment.NewLine +
                                 "Error Details: " + Environment.NewLine +
                                 e.ToString(), "Sorry!", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -33,11 +33,21 @@ namespace _3Commas.BulkEditor
 
         private static void EncryptConfigFile()
         {
-            System.Configuration.Configuration config = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.PerUserRoamingAndLocal);
-            ConfigurationSection section = config.GetSection("userSettings/_3Commas.BulkEditor.Properties.Settings");
-            section.SectionInformation.ProtectSection("RsaProtectedConfigurationProvider");
-            section.SectionInformation.ForceSave = true;
-            config.Save(ConfigurationSaveMode.Full);
+            try
+            {
+                System.Configuration.Configuration config = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.PerUserRoamingAndLocal);
+                ConfigurationSection section = config.GetSection("userSettings/_3Commas.BulkEditor.Properties.Settings");
+                if (!section.SectionInformation.IsProtected)
+                {
+                    section.SectionInformation.ProtectSection("RsaProtectedConfigurationProvider");
+                    section.SectionInformation.ForceSave = true;
+                    config.Save(ConfigurationSaveMode.Full);
+                }
+            }
+            catch
+            {
+                // ignore
+            }
         }
     }
 }
